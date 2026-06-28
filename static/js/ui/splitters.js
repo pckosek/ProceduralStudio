@@ -1,8 +1,8 @@
 /* ============================================================
    ui/splitters.js
-   Resizable pane splitters — vertical (editor|canvas) and
-   horizontal (canvas|console). Positions persisted to
-   localStorage. No behavioral changes to any other system.
+   Resizable pane splitters — vertical (editor|inspector) and
+   horizontal (inspector|console). Positions persisted to
+   localStorage. No behavioral changes from PixelWorkbench.
    ============================================================ */
 
 function setupSplitters() {
@@ -16,8 +16,7 @@ function setupVerticalSplitter() {
     const editorCol = document.getElementById('editor-col');
     const mainArea  = document.getElementById('main-area');
 
-    // Restore saved width, default to 50%
-    const savedW = localStorage.getItem('paintlab_editor_w');
+    const savedW = localStorage.getItem('jinjalab_editor_w');
     if (savedW) {
         editorCol.style.width = savedW;
         editorCol.style.flex  = 'none';
@@ -30,23 +29,21 @@ function setupVerticalSplitter() {
         startX = e.clientX;
         startW = editorCol.getBoundingClientRect().width;
         resizer.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
+        document.body.style.cursor    = 'col-resize';
         document.body.style.userSelect = 'none';
 
         function onMove(e) {
-            const delta = e.clientX - startX;
+            const delta  = e.clientX - startX;
             const totalW = mainArea.getBoundingClientRect().width;
-            const minW   = 200;
-            const maxW   = totalW - 200;
-            const newW   = Math.max(minW, Math.min(maxW, startW + delta));
+            const newW   = Math.max(200, Math.min(totalW - 200, startW + delta));
             editorCol.style.width = newW + 'px';
             editorCol.style.flex  = 'none';
-            localStorage.setItem('paintlab_editor_w', newW + 'px');
+            localStorage.setItem('jinjalab_editor_w', newW + 'px');
         }
 
         function onUp() {
             resizer.classList.remove('dragging');
-            document.body.style.cursor = '';
+            document.body.style.cursor    = '';
             document.body.style.userSelect = '';
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
@@ -57,17 +54,16 @@ function setupVerticalSplitter() {
     });
 }
 
-// ── Horizontal splitter: workspace-area / console-area ───────
+// ── Horizontal splitter: inspector-area / console-area ───────
 function setupHorizontalSplitter() {
     const resizer       = document.getElementById('h-resizer');
-    const workspaceArea = document.getElementById('workspace-area');
-    const canvasCol     = document.getElementById('canvas-col');
+    const inspectorArea = document.getElementById('inspector-area');
+    const inspectorCol  = document.getElementById('inspector-col');
 
-    // Restore saved height, default to 60%
-    const savedH = localStorage.getItem('paintlab_canvas_h');
+    const savedH = localStorage.getItem('jinjalab_inspector_h');
     if (savedH) {
-        workspaceArea.style.height = savedH;
-        workspaceArea.style.flex   = 'none';
+        inspectorArea.style.height = savedH;
+        inspectorArea.style.flex   = 'none';
     }
 
     let startY, startH;
@@ -75,25 +71,23 @@ function setupHorizontalSplitter() {
     resizer.addEventListener('mousedown', (e) => {
         e.preventDefault();
         startY = e.clientY;
-        startH = workspaceArea.getBoundingClientRect().height;
+        startH = inspectorArea.getBoundingClientRect().height;
         resizer.classList.add('dragging');
-        document.body.style.cursor = 'row-resize';
+        document.body.style.cursor    = 'row-resize';
         document.body.style.userSelect = 'none';
 
         function onMove(e) {
             const delta  = e.clientY - startY;
-            const totalH = canvasCol.getBoundingClientRect().height;
-            const minH   = 120;
-            const maxH   = totalH - 80;
-            const newH   = Math.max(minH, Math.min(maxH, startH + delta));
-            workspaceArea.style.height = newH + 'px';
-            workspaceArea.style.flex   = 'none';
-            localStorage.setItem('paintlab_canvas_h', newH + 'px');
+            const totalH = inspectorCol.getBoundingClientRect().height;
+            const newH   = Math.max(120, Math.min(totalH - 80, startH + delta));
+            inspectorArea.style.height = newH + 'px';
+            inspectorArea.style.flex   = 'none';
+            localStorage.setItem('jinjalab_inspector_h', newH + 'px');
         }
 
         function onUp() {
             resizer.classList.remove('dragging');
-            document.body.style.cursor = '';
+            document.body.style.cursor    = '';
             document.body.style.userSelect = '';
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);

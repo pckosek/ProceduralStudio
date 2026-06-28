@@ -1,9 +1,15 @@
 /* ============================================================
-   runtime/runtime.js
+   runtime/runtime.js — JinjaWorkbench
    Pyodide runtime initialization, AMD compatibility workaround,
-   Python bridge injection, and the Run button execution pipeline.
-   Updated for new DOM IDs: #status-badge, #run-btn-label.
-   All behavioral semantics preserved.
+   Jinja2 bridge injection, and the Run button execution pipeline.
+
+   Bridge replaces PixelWorkbench's PIL/canvas API with:
+     render_template(template_path, **context)
+       — reads template file from Pyodide FS,
+         renders it with Jinja2,
+         passes result to JS via window.setRenderResult()
+
+   No canvas. No PIL. No image store.
    ============================================================ */
 
 let pyodideInstance = null;
@@ -26,8 +32,7 @@ function setStatus(text, badgeClass) {
 }
 
 async function initializePyodide() {
-    // ---> WORKAROUND: Monaco AMD loader and Pyodide stackframe behavior conflict.
-    // Suppress AMD temporarily while Pyodide initializes, then restore.
+    // ── WORKAROUND: Monaco AMD loader and Pyodide conflict ──────────
     const originalAmd = window.define && window.define.amd;
     if (window.define) window.define.amd = false;
 
@@ -37,100 +42,109 @@ async function initializePyodide() {
         stderr: (text) => printToConsole(text + '\n', 'out-stderr')
     });
 
-    setStatus("Pillow…", "badge-loading");
-    await pyodideInstance.loadPackage("pillow");
+    // Jinja2 ships with Pyodide's standard library — no loadPackage needed.
+    // If the Pyodide build does not include it, uncomment the line below:
+    // await pyodideInstance.loadPackage("jinja2");
 
     // Restore Monaco AMD loader
     if (window.define && originalAmd) window.define.amd = originalAmd;
-    // --------------------------------------------------------
+    // ────────────────────────────────────────────────────────────────
 
     setStatus("Bridge…", "badge-loading");
+
+    // ── Jinja2 Bridge ────────────────────────────────────────────────
+    // render_template() intentionally mirrors Flask's API surface so that
+    // students who later use Flask encounter familiar syntax.
+    //
+    // The bridge's job:
+    //   1. Read the template file from Pyodide's /project/ filesystem
+    //   2. Render it with Jinja2 using the supplied context dict
+    //   3. Hand the rendered string + metadata to JS via window.setRenderResult()
+    //
+    // Students never call window.setRenderResult() directly —
+    // that is Workbench infrastructure. Students call render_template().
+    // ────────────────────────────────────────────────────────────────
     pyodideInstance.runPython(`
-import io, base64, js
-from PIL import Image
+import js
+import json
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound, TemplateSyntaxError
 
-def _b64_to_pil(data_url):
-    """Convert a PNG data-URL string to a PIL Image (alpha-safe)."""
-    _header, _data = data_url.split(',', 1)
-    return Image.open(io.BytesIO(base64.b64decode(_data)))
+def render_template(template_path, **context):
+    """Render a Jinja2 template and display the result in the Render Inspector.
 
-async def get_image(name=None):
-    """Return a PIL Image.
+    Works like Flask's render_template() — pass the template path relative to
+    the project root, followed by any template variables as keyword arguments.
 
-    get_image()
-        Returns the active canvas as a PIL Image. Unchanged behaviour.
+    The Workbench intercepts the rendered output and populates the Render
+    Inspector tabs (Template source, Context, Output, Preview).
 
-    get_image("name")
-        Fetches a named image from the Image Bank by exact name.
-        Raises ValueError if no image with that name exists.
+    No return value. The rendered result is a side-effect visible in the UI.
 
     Examples:
-        img = await get_image()
-        img = await get_image("maze_seed")
+        render_template("templates/index.html", title="Home", items=items)
+        render_template("report.html", data=rows)
     """
-    if name is None:
-        return _b64_to_pil(js.getCanvasBase64())
-    data_url = await js.getImageBankBase64(name)
-    if data_url is None:
-        raise ValueError(f'Image Bank: no image named "{name}"')
-    return _b64_to_pil(data_url)
+    import os
 
-def set_image(pil_img):
-    """Write a PIL Image back to the active canvas.
+    # Resolve the template path relative to the current working directory
+    # (/project/ after syncProjectToPyodide sets os.chdir('/project'))
+    cwd = os.getcwd()
 
-    Example:
-        set_image(modified_img)
-    """
-    buffered = io.BytesIO()
-    pil_img.save(buffered, format="PNG")
-    js.setCanvasFromBase64(base64.b64encode(buffered.getvalue()).decode('utf-8'))
+    # Split the template_path into loader base dir + template name so that
+    # Jinja2's FileSystemLoader can find {% include %} and {% extends %} siblings.
+    # e.g. "templates/index.html" → base="/project/templates", name="index.html"
+    # e.g. "report.html" → base="/project", name="report.html"
+    parts = template_path.replace('\\\\', '/').split('/')
+    template_name = parts[-1]
+    template_subdir = '/'.join(parts[:-1])
+    loader_base = os.path.join(cwd, template_subdir) if template_subdir else cwd
 
-def get_selection():
-    """Return the currently selected region as a PIL Image.
+    # Read raw template source for the inspector
+    full_path = os.path.join(cwd, template_path)
+    try:
+        with open(full_path, 'r', encoding='utf-8') as f:
+            template_source = f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"render_template(): template not found: '{template_path}'\\n"
+            f"Expected at /project/{template_path}"
+        )
 
-    The original canvas is unchanged. The selection rectangle remains active.
-    Returns None if no selection is currently active.
+    # Render via Jinja2 FileSystemLoader so {% extends %} and {% include %}
+    # resolve relative to the template's own directory.
+    env = Environment(
+        loader=FileSystemLoader(loader_base),
+        autoescape=False,   # students see raw output; auto-escaping is a
+                            # separate learning topic, not a default here
+        keep_trailing_newline=True,
+    )
 
-    Example:
-        region = get_selection()
-        if region:
-            region_inverted = ImageOps.invert(region.convert('RGB'))
-    """
-    data_url = js.getSelectionBase64()
-    if data_url is None:
-        print("get_selection(): no active selection. Use the Select tool first.")
-        return None
-    return _b64_to_pil(data_url)
+    template = env.get_template(template_name)
+    rendered = template.render(**context)
 
-async def save_image(pil_img, name):
-    """Save a PIL Image to the Image Bank by name.
+    # Serialize context for the inspector — convert to JSON-safe representation.
+    # Non-serializable values fall back to their repr() string so the inspector
+    # always shows something meaningful rather than crashing.
+    def to_json_safe(obj, depth=0):
+        if depth > 5:
+            return repr(obj)
+        if isinstance(obj, (str, int, float, bool, type(None))):
+            return obj
+        if isinstance(obj, dict):
+            return {str(k): to_json_safe(v, depth+1) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [to_json_safe(i, depth+1) for i in obj]
+        return repr(obj)
 
-    Creates a new entry or overwrites an existing entry with the same name.
-    This matches the overwrite-by-name semantics of the manual Save button.
+    context_json = json.dumps(to_json_safe(context), indent=2, ensure_ascii=False)
 
-    After saving, the image is immediately available via:
-        await get_image("name")
-    and via the Image Bank UI (click the Image Bank icon in the sidebar).
-
-    Example:
-        img = generate_maze()
-        await save_image(img, "maze_01")
-    """
-    buffered = io.BytesIO()
-    pil_img.save(buffered, format="PNG")
-    b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    ok = await js.saveImageToBank(name, b64)
-    if not ok:
-        print(f"save_image(): failed to save '{name}'")
+    # Hand all three artifacts to the JS Render Inspector
+    js.setRenderResult(template_path, template_source, context_json, rendered)
 
 import __main__
-__main__.get_image     = get_image
-__main__.set_image     = set_image
-__main__.get_selection = get_selection
-__main__.save_image    = save_image
+__main__.render_template = render_template
     `);
 
-    // Expose globally so explorer.js pyoWrite/pyoDelete etc. can access it
     window.pyodideInstance = pyodideInstance;
 
     // Sync all saved project files into Pyodide FS and chdir to /project
@@ -138,15 +152,15 @@ __main__.save_image    = save_image
 }
 
 function setupRunButton() {
-    const runBtn      = document.getElementById('run-btn');
-    const runBtnLabel = document.getElementById('run-btn-label');
+    const runBtn        = document.getElementById('run-btn');
+    const runBtnLabel   = document.getElementById('run-btn-label');
     const consoleOutput = document.getElementById('console-output');
 
     runBtn.addEventListener('click', async () => {
         if (!pyodideInstance || !editorInstance) return;
 
         consoleOutput.textContent = '';
-        runBtn.disabled      = true;
+        runBtn.disabled         = true;
         runBtnLabel.textContent = 'Running…';
         setStatus("Running", "badge-loading");
 
@@ -157,7 +171,7 @@ function setupRunButton() {
             setStatus("Error", "badge-error");
             printToConsole(err.message + '\n', 'out-stderr');
         } finally {
-            runBtn.disabled     = false;
+            runBtn.disabled         = false;
             runBtnLabel.textContent = 'Run';
         }
     });

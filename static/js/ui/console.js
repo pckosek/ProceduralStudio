@@ -2,7 +2,7 @@
    ui/console.js
    In-app output console — routes Python stdout, stderr,
    exceptions, and system messages into the UI panel.
-   No browser DevTools dependency. No behavioral changes.
+   No behavioral changes from PixelWorkbench.
    ============================================================ */
 
 function printToConsole(text, cssClass = 'out-stdout') {

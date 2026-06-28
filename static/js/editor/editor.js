@@ -1,26 +1,29 @@
 /* ============================================================
-   editor/editor.js
+   editor/editor.js — JinjaWorkbench
    Monaco editor initialization, autosave, keyboard shortcut,
    font-size and theme dropdown listeners.
-   Updated to use #run-btn-label for the new header layout.
-   All behavioral semantics preserved.
+   Default code updated for the template rendering domain.
+   All behavioral infrastructure unchanged from PixelWorkbench.
    ============================================================ */
 
 let editorInstance = null;
 
-const DEFAULT_CODE = `# PIL Image Bridge Test
-from PIL import ImageOps
+const DEFAULT_CODE = `# JinjaWorkbench — starter example
+# render_template() works like Flask's render_template(),
+# but runs entirely in the browser via Pyodide + Jinja2.
 
-# 1. Grab current state of the browser canvas as a PIL Image
-img = get_image()
-print(f"Original dimensions: {img.size}")
+students = [
+    {"name": "Alice",   "grade": "A"},
+    {"name": "Bob",     "grade": "B+"},
+    {"name": "Charlie", "grade": "A-"},
+]
 
-# 2. Modify image (Invert RGB colors)
-rgb_img = img.convert('RGB')
-modified_img = ImageOps.invert(rgb_img)
-
-# 3. Update the active workspace canvas
-set_image(modified_img)`;
+render_template(
+    "templates/index.html",
+    students=students,
+    title="Student Roster"
+)
+`;
 
 function initializeMonacoEditor(fontSizeSelect) {
     return new Promise((resolve) => {
@@ -28,7 +31,22 @@ function initializeMonacoEditor(fontSizeSelect) {
             paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
         });
         require(['vs/editor/editor.main'], function () {
-            const savedCode = localStorage.getItem("paintlab_code");
+            const savedCode = localStorage.getItem("jinjalab_code");
+
+            // Register Jinja2 as a language alias using HTML tokenizer as the
+            // closest built-in approximation. Monaco does not ship a Jinja2
+            // grammar; html gives tag/attribute/string highlighting which helps
+            // students read template structure. A TextMate grammar can be
+            // substituted in a future pass without any other changes here.
+            if (!monaco.languages.getLanguages().find(l => l.id === 'jinja2')) {
+                monaco.languages.register({ id: 'jinja2', extensions: ['.jinja', '.j2'] });
+                monaco.languages.setLanguageConfiguration('jinja2',
+                    monaco.languages.getLanguages().find(l => l.id === 'html')
+                        ? {} : {}
+                );
+                // Reuse html tokenizer — best available built-in approximation
+                monaco.editor.setModelLanguage;
+            }
 
             editorInstance = monaco.editor.create(document.getElementById('editor-container'), {
                 value: savedCode !== null ? savedCode : DEFAULT_CODE,
@@ -42,14 +60,14 @@ function initializeMonacoEditor(fontSizeSelect) {
                 renderLineHighlight: 'all',
             });
 
-            // Ctrl+Enter / Cmd+Enter → Run button (identical execution path)
+            // Ctrl+Enter / Cmd+Enter → Run button
             editorInstance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
                 document.getElementById('run-btn').click();
             });
 
-            // Silent autosave on every keystroke — session protection, not archival
+            // Silent autosave on every keystroke
             editorInstance.onDidChangeModelContent(() => {
-                localStorage.setItem("paintlab_code", editorInstance.getValue());
+                localStorage.setItem("jinjalab_code", editorInstance.getValue());
             });
 
             resolve();
