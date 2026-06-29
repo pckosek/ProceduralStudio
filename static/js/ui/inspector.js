@@ -56,11 +56,13 @@ function populateTab(name, result) {
     }
 }
 
-function populateTemplateTab({ templatePath, templateSource }) {
+function populateTemplateTab({ templateSource }) {
     const el = document.getElementById('inspector-template');
     if (!el) return;
-    // Show path as a header comment so students know which file rendered
-    el.textContent = `{# ${templatePath} #}\n` + templateSource;
+    // Display the raw template source exactly as written by the student.
+    // The filename is shown in the inspector header label — no auto-injected
+    // comment belongs here.
+    el.textContent = templateSource;
 }
 
 function populateContextTab({ contextJson }) {

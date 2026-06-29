@@ -42,9 +42,10 @@ async function initializePyodide() {
         stderr: (text) => printToConsole(text + '\n', 'out-stderr')
     });
 
-    // Jinja2 ships with Pyodide's standard library — no loadPackage needed.
-    // If the Pyodide build does not include it, uncomment the line below:
-    // await pyodideInstance.loadPackage("jinja2");
+    // Jinja2 is included in the Pyodide distribution but is not pre-installed —
+    // it must be loaded explicitly before the bridge injection can import it.
+    setStatus("Jinja2…", "badge-loading");
+    await pyodideInstance.loadPackage("jinja2");
 
     // Restore Monaco AMD loader
     if (window.define && originalAmd) window.define.amd = originalAmd;

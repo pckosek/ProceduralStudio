@@ -302,16 +302,8 @@ function renderTree(node, container, depth = 0) {
 
         row.addEventListener('click', (e) => {
             if (e.target.closest('.explorer-icon-btn')) return;
-            document.querySelectorAll('.explorer-row').forEach(r => r.classList.remove('explorer-active'));
-            row.classList.add('explorer-active');
-            activeProjectFile = { id: node.id, path: node.path };
-            localStorage.setItem('jinjalab_active_project_id',   node.id);
-            localStorage.setItem('jinjalab_active_project_path', node.path);
-            const label = document.getElementById('editor-filename');
-            if (label) label.textContent = node.path;
-        });
-        row.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.explorer-icon-btn')) return;
+            // Single-click opens the file immediately — updates active state,
+            // Monaco model, editor contents, and title label in one action.
             openProjectFile(node.record).then(() => refreshExplorerUI());
         });
         row.querySelector('[data-action="rename"]').addEventListener('click', e => { e.stopPropagation(); promptRename(node); });

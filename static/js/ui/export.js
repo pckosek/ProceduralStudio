@@ -14,17 +14,51 @@
    ============================================================ */
 
 const JSZIP_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-let jszipLoaded = false;
 
-async function ensureJSZip() {
-    if (jszipLoaded || window.JSZip) { jszipLoaded = true; return; }
-    await new Promise((resolve, reject) => {
+// A single shared Promise so concurrent callers await the same load.
+let _jszipPromise = null;
+
+function ensureJSZip() {
+    if (window.JSZip)  return Promise.resolve();
+    if (_jszipPromise) return _jszipPromise;
+
+    _jszipPromise = new Promise((resolve, reject) => {
+        // ── AMD conflict workaround ──────────────────────────────────
+        // Monaco's require.js leaves window.define.amd truthy on the page.
+        // JSZip's UMD factory checks `typeof define === 'function' && define.amd`
+        // and, when true, calls define() to register as an AMD module instead
+        // of assigning window.JSZip. The script loads successfully but
+        // window.JSZip is never set, so `new JSZip()` throws ReferenceError.
+        //
+        // Fix: null out define.amd before appending the script tag so the UMD
+        // factory takes the global/CommonJS branch, then restore it in onload.
+        // ────────────────────────────────────────────────────────────
+        const amdBackup = (window.define && window.define.amd) || null;
+        if (window.define) window.define.amd = null;
+
         const s = document.createElement('script');
         s.src = JSZIP_CDN;
-        s.onload  = () => { jszipLoaded = true; resolve(); };
-        s.onerror = () => reject(new Error('Failed to load JSZip from CDN'));
+
+        s.onload = () => {
+            // Restore Monaco's AMD flag
+            if (window.define) window.define.amd = amdBackup;
+
+            if (window.JSZip) {
+                resolve();
+            } else {
+                reject(new Error('JSZip loaded but window.JSZip is not defined'));
+            }
+        };
+
+        s.onerror = () => {
+            if (window.define) window.define.amd = amdBackup;
+            reject(new Error('Failed to load JSZip from CDN'));
+        };
+
         document.head.appendChild(s);
     });
+
+    return _jszipPromise;
 }
 
 // ── Export ────────────────────────────────────────────────────
